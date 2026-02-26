@@ -35,6 +35,13 @@ class ExportReportRequest(BaseModel):
 class RunFromConfigRequest(BaseModel):
     config_path: str
     model_name: str | None = None
+    seed: int | None = None
+    temperature: float | None = None
+    baseline_run_id: str | None = None
+
+
+class ResetApplicationRequest(BaseModel):
+    clear_reports: bool = True
 
 
 def create_app(service: EvalService | None = None) -> FastAPI:
@@ -100,8 +107,23 @@ def create_app(service: EvalService | None = None) -> FastAPI:
         request: RunFromConfigRequest, svc: EvalService = Depends(get_service)
     ) -> dict:
         try:
-            run = svc.run_from_config(Path(request.config_path), model_name=request.model_name)
+            run = svc.run_from_config(
+                Path(request.config_path),
+                model_name=request.model_name,
+                seed=request.seed,
+                temperature=request.temperature,
+                baseline_run_id=request.baseline_run_id,
+            )
             return {"status": "ok", "run": run.model_dump(mode="json")}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/admin/reset")
+    def reset_application(
+        request: ResetApplicationRequest, svc: EvalService = Depends(get_service)
+    ) -> dict:
+        try:
+            return svc.reset_application_data(clear_reports=request.clear_reports)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

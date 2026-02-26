@@ -109,6 +109,12 @@ class EvalRepository:
         with self._engine.begin() as conn:
             conn.execute(update(runs_table).where(runs_table.c.run_id == run_id).values(**payload))
 
+    def update_run_metadata(self, run_id: str, metadata: dict[str, Any]) -> None:
+        with self._engine.begin() as conn:
+            conn.execute(
+                update(runs_table).where(runs_table.c.run_id == run_id).values(metadata=metadata)
+            )
+
     def insert_item_results(self, results: list[ItemResult]) -> None:
         if not results:
             return
@@ -282,3 +288,11 @@ class EvalRepository:
         with self._engine.begin() as conn:
             total = conn.execute(stmt).scalar_one()
         return int(total)
+
+    def reset_application_data(self) -> None:
+        with self._engine.begin() as conn:
+            conn.execute(delete(item_results_table))
+            conn.execute(delete(run_tag_metrics_table))
+            conn.execute(delete(run_drift_alerts_table))
+            conn.execute(delete(runs_table))
+            conn.execute(delete(datasets_table))

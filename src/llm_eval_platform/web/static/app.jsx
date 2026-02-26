@@ -3,6 +3,10 @@ const { useEffect, useMemo, useState } = React;
 const NAV = ["Board", "Runs", "Compare", "Diagnostics", "Artifacts"];
 const METRICS = ["exact_match", "keyword_coverage", "schema_valid", "llm_judge_score"];
 const STEP_ORDER = ["Runs", "Board", "Diagnostics", "Compare", "Artifacts"];
+const CONFIG_PRESETS = {
+  baseline: "configs/baseline.yaml",
+  candidate: "configs/candidate.yaml",
+};
 
 const STEP_COPY = {
   Runs: {
@@ -34,6 +38,69 @@ const STEP_COPY = {
     what: "Export markdown/json reports and metrics snapshots.",
     why: "Artifacts make results portable for reviews, audits, and portfolio evidence.",
     doneWhen: "Done when report artifacts are exported.",
+  },
+};
+
+const STEP_INSIGHTS = {
+  Runs: {
+    expect: [
+      "Register a versioned dataset and confirm it is accepted without errors.",
+      "Execute a baseline run first, then execute a candidate variant.",
+      "Use seed/temperature intentionally for repeatability vs exploration.",
+    ],
+    watch: [
+      "Config path being used for each run launch.",
+      "Run execution status (running, success, error).",
+      "Pinned baseline/candidate IDs auto-updating after launch.",
+    ],
+  },
+  Board: {
+    expect: [
+      "Inspect run cards grouped by dataset and select the most relevant run.",
+      "Review identity fingerprints to confirm reproducibility context.",
+      "Check metric snapshot and trend direction before deeper diagnostics.",
+    ],
+    watch: [
+      "exact_match: strict correctness against expected output.",
+      "keyword_coverage: required concept/token presence coverage.",
+      "schema_valid: structured output validity against expected schema.",
+    ],
+  },
+  Diagnostics: {
+    expect: [
+      "Investigate failures by sample and severity, not only aggregate averages.",
+      "Review tag-level slices to detect hidden regressions by domain/difficulty.",
+      "Use error diagnostics to separate formatting failures from reasoning misses.",
+    ],
+    watch: [
+      "Worst samples: highest-severity mistakes first.",
+      "Tag breakdown: slice quality drift.",
+      "Volatility/drift alerts: consistency risk across repeated runs.",
+    ],
+  },
+  Compare: {
+    expect: [
+      "Compare pinned baseline vs candidate and inspect delta direction.",
+      "Apply max-drop policies to classify acceptable drift vs blocked regressions.",
+      "Use threshold overlays to explain why a gate passed/failed.",
+    ],
+    watch: [
+      "Delta sign (+/-) by metric and breach values.",
+      "Allowed drop vs actual drop bars.",
+      "Gate decision reasons and release risk implications.",
+    ],
+  },
+  Artifacts: {
+    expect: [
+      "Export markdown/json reports and a portfolio-ready metrics snapshot.",
+      "Ensure artifact paths are generated and files are present on disk.",
+      "Treat exports as evidence package for review/interviews.",
+    ],
+    watch: [
+      "Run ID and baseline ID used for export context.",
+      "Generated report paths.",
+      "Workflow completion state for release storytelling.",
+    ],
   },
 };
 
@@ -195,6 +262,7 @@ function RunCard({ run, selected, onSelect, pinnedBaselineId, pinnedCandidateId,
         <p>Seed: {run.seed}</p>
         <p>Started: {(run.started_at || "").slice(0, 19).replace("T", " ")}</p>
       </div>
+      <p className="mt-1 truncate text-[11px] text-slate-500">Config: {(run.metadata && run.metadata.config_path) || "unknown"}</p>
       <div className="mt-2 grid grid-cols-3 gap-1 text-xs">
         <p className="rounded bg-slate-100 px-2 py-1">EM {fmtPct(metrics.exact_match)}</p>
         <p className="rounded bg-slate-100 px-2 py-1">KW {fmtPct(metrics.keyword_coverage)}</p>
@@ -461,6 +529,13 @@ function RunDetailPage({
 }
 
 function App() {
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem("llm_eval_theme") || "light";
+    } catch {
+      return "light";
+    }
+  });
   const [nav, setNav] = useState("Runs");
   const [routePath, setRoutePath] = useState(readPath());
   const [runs, setRuns] = useState([]);
@@ -481,13 +556,31 @@ function App() {
   const [pinnedCandidateId, setPinnedCandidateId] = useState("");
   const [runExecution, setRunExecution] = useState({ status: "idle", message: "" });
   const [datasetRegistered, setDatasetRegistered] = useState(false);
+  const [runLaunchHistory, setRunLaunchHistory] = useState([]);
+  const [workflowProgress, setWorkflowProgress] = useState({
+    Runs: false,
+    Board: false,
+    Diagnostics: false,
+    Compare: false,
+    Artifacts: false,
+  });
+  const [tourFocusRequest, setTourFocusRequest] = useState({ anchor: "", nonce: 0 });
+  const [focusedAnchor, setFocusedAnchor] = useState("");
+  const [showCelebration, setShowCelebration] = useState(false);
 
   const [registerForm, setRegisterForm] = useState({
     dataset_name: "sample_benchmark",
     version: "v1",
     path: "datasets/sample_benchmark.jsonl",
   });
-  const [runForm, setRunForm] = useState({ config_path: "configs/baseline.yaml", model_name: "" });
+  const [runForm, setRunForm] = useState({
+    profile: "baseline",
+    config_path: "configs/baseline.yaml",
+    model_name: "",
+    seed: "",
+    temperature: "",
+    baseline_from_pinned: true,
+  });
   const [compareForm, setCompareForm] = useState({
     baseline_run_id: "",
     candidate_run_id: "",
@@ -499,6 +592,14 @@ function App() {
   const [tagPagination, setTagPagination] = useState({ limit: 50, offset: 0 });
   const [exportForm, setExportForm] = useState({ run_id: "", baseline_run_id: "", output_dir: "reports" });
   const [tour, setTour] = useState({ enabled: false, index: 0 });
+
+  useEffect(() => {
+    const normalized = theme === "dark" ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", normalized);
+    try {
+      localStorage.setItem("llm_eval_theme", normalized);
+    } catch {}
+  }, [theme]);
 
   async function api(path, options = {}) {
     const ts = new Date().toISOString();
@@ -565,6 +666,7 @@ function App() {
     if (match && match[1]) {
       const runId = decodeURIComponent(match[1]);
       setSelectedRunId(runId);
+      setWorkflowProgress((prev) => ({ ...prev, Board: true }));
       setNav("Board");
     }
   }, [routePath]);
@@ -576,6 +678,12 @@ function App() {
     if (!pinnedCandidateId) setPinnedCandidateId(runs[0].run_id);
     if (!pinnedBaselineId && runs.length > 1) setPinnedBaselineId(runs[1].run_id);
   }, [runs]);
+
+  useEffect(() => {
+    if (nav === "Diagnostics" && selectedRunId) {
+      setWorkflowProgress((prev) => ({ ...prev, Diagnostics: true }));
+    }
+  }, [nav, selectedRunId]);
 
   useEffect(() => {
     setCompareForm((prev) => ({
@@ -642,19 +750,18 @@ function App() {
   const tourStep = STEP_ORDER[Math.max(0, Math.min(tour.index, STEP_ORDER.length - 1))];
   const activeStep = tour.enabled ? tourStep : (isRunDetailRoute ? "Board" : nav);
   const activeStepIndex = Math.max(0, STEP_ORDER.indexOf(activeStep));
-  const stepCompletion = {
-    Runs: runs.length > 0,
-    Board: !!selectedRunId,
-    Diagnostics: results.length > 0 || tagBreakdown.length > 0,
-    Compare: !!compare,
-    Artifacts: !!artifacts,
-  };
+  const stepCompletion = workflowProgress;
   const isStepUnlocked = (idx) => (idx <= 0 ? true : STEP_ORDER.slice(0, idx).every((s) => !!stepCompletion[s]));
   const canAdvanceTour = !!stepCompletion[tourStep];
   const tourProgressPct = Math.round(((Math.max(0, tour.index) + 1) / STEP_ORDER.length) * 100);
   const runsTourPhase = !datasetRegistered ? "register" : "execute";
   const highlightDatasetRegistry = tour.enabled && tourStep === "Runs" && nav === "Runs" && runsTourPhase === "register";
-  const highlightRunExecute = tour.enabled && tourStep === "Runs" && nav === "Runs" && runsTourPhase === "execute";
+  const highlightRunExecute =
+    tour.enabled &&
+    tourStep === "Runs" &&
+    nav === "Runs" &&
+    runsTourPhase === "execute" &&
+    !stepCompletion.Runs;
 
   const comparePinned = () => {
     if (!pinnedBaselineId || !pinnedCandidateId) return;
@@ -670,8 +777,50 @@ function App() {
       },
     };
     setCompareForm((prev) => ({ ...prev, baseline_run_id: pinnedBaselineId, candidate_run_id: pinnedCandidateId }));
-    api("/compare", { method: "POST", body: JSON.stringify(payload) }).then((res) => setCompare(res.compare));
+    api("/compare", { method: "POST", body: JSON.stringify(payload) }).then((res) => {
+      setCompare(res.compare);
+      setWorkflowProgress((prev) => ({ ...prev, Compare: true }));
+    });
   };
+
+  const baselinePinnedRun = runs.find((r) => r.run_id === pinnedBaselineId) || null;
+  const candidatePinnedRun = runs.find((r) => r.run_id === pinnedCandidateId) || null;
+
+  const resolveTourAnchor = () => {
+    if (tourStep === "Runs") {
+      return runsTourPhase === "register" ? "tour-runs-register" : "tour-runs-execute";
+    }
+    if (tourStep === "Board") return "tour-board-timeline";
+    if (tourStep === "Diagnostics") return "tour-diagnostics";
+    if (tourStep === "Compare") return "tour-compare";
+    if (tourStep === "Artifacts") return "tour-artifacts";
+    return "";
+  };
+
+  const takeMeThere = () => {
+    setNav(tourStep);
+    goto("/ui");
+    setTourFocusRequest((prev) => ({
+      anchor: resolveTourAnchor(),
+      nonce: prev.nonce + 1,
+    }));
+  };
+
+  useEffect(() => {
+    if (!tourFocusRequest.anchor) return;
+    const timer = window.setTimeout(() => {
+      const element = document.getElementById(tourFocusRequest.anchor);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth", block: "center" });
+        setFocusedAnchor(tourFocusRequest.anchor);
+        window.setTimeout(() => setFocusedAnchor(""), 1800);
+      }
+    }, 100);
+    return () => window.clearTimeout(timer);
+  }, [tourFocusRequest, nav, routePath, runsTourPhase]);
+
+  const focusPulseClass = (anchor) =>
+    focusedAnchor === anchor ? " ring-2 ring-blue-400 shadow-xl animate-pulse" : "";
 
   const goToTourStep = (index, force = false) => {
     const clamped = Math.max(0, Math.min(index, STEP_ORDER.length - 1));
@@ -680,6 +829,58 @@ function App() {
     setTour((prev) => ({ ...prev, index: clamped }));
     setNav(step);
     goto("/ui");
+  };
+
+  const resetWorkflowCycle = () => {
+    setWorkflowProgress({
+      Runs: false,
+      Board: false,
+      Diagnostics: false,
+      Compare: false,
+      Artifacts: false,
+    });
+    setCompare(null);
+    setArtifacts(null);
+    setDatasetRegistered(false);
+    setRunExecution({ status: "idle", message: "" });
+    setTour({ enabled: false, index: 0 });
+    setNav("Runs");
+    goto("/ui");
+  };
+
+  const resetApplicationState = () => {
+    setRuns([]);
+    setSelectedRunId("");
+    setSelectedRun(null);
+    setResults([]);
+    setCompare(null);
+    setArtifacts(null);
+    setDrift(null);
+    setFailureAnalysis(null);
+    setReleaseDecision(null);
+    setTagMetrics([]);
+    setTagMetricsMeta({ limit: 50, offset: 0, total: 0, has_more: false });
+    setAlertTimeline(null);
+    setPinnedBaselineId("");
+    setPinnedCandidateId("");
+    setRunExecution({ status: "idle", message: "" });
+    setDatasetRegistered(false);
+    setRunLaunchHistory([]);
+    setWorkflowProgress({
+      Runs: false,
+      Board: false,
+      Diagnostics: false,
+      Compare: false,
+      Artifacts: false,
+    });
+    setTour({ enabled: false, index: 0 });
+    setNav("Runs");
+    goto("/ui");
+  };
+
+  const triggerCelebration = () => {
+    setShowCelebration(true);
+    window.setTimeout(() => setShowCelebration(false), 2600);
   };
 
   const metricTrends = useMemo(() => {
@@ -719,6 +920,20 @@ function App() {
             </span>
             <button
               type="button"
+              onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
+              className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+            >
+              {theme === "dark" ? "Light Mode" : "Dark Mode"}
+            </button>
+            <button
+              type="button"
+              onClick={resetWorkflowCycle}
+              className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+            >
+              Restart Workflow
+            </button>
+            <button
+              type="button"
               onClick={() => {
                 if (tour.enabled) {
                   setTour({ enabled: false, index: 0 });
@@ -730,6 +945,23 @@ function App() {
               className={"rounded-full px-2.5 py-1 text-xs font-semibold transition " + (tour.enabled ? "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100" : "border border-blue-200 bg-blue-600 text-white hover:bg-blue-700")}
             >
               {tour.enabled ? "Exit Tour" : "Start Tour"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!window.confirm("Reset application data? This clears datasets, runs, and reports.")) return;
+                api("/admin/reset", { method: "POST", body: JSON.stringify({ clear_reports: true }) })
+                  .then(() => resetApplicationState())
+                  .catch((err) => {
+                    setRunExecution({
+                      status: "error",
+                      message: `Reset failed: ${String(err).replace(/^Error:\s*/, "")}`,
+                    });
+                  });
+              }}
+              className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+            >
+              Reset App Data
             </button>
           </div>
         </div>
@@ -781,6 +1013,23 @@ function App() {
         <div className="mt-3 rounded-xl border border-blue-200 bg-white p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Why This Step Matters</p>
           <p className="mt-1 text-sm text-slate-700">{STEP_COPY[activeStep]?.why}</p>
+        </div>
+        <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Step Insights</p>
+          <div className="mt-2 grid gap-3 md:grid-cols-2">
+            <div>
+              <p className="text-xs font-semibold text-slate-700">What To Expect</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-slate-600">
+                {(STEP_INSIGHTS[activeStep]?.expect || []).map((row, idx) => <li key={idx}>{row}</li>)}
+              </ul>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-700">What To Watch</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-slate-600">
+                {(STEP_INSIGHTS[activeStep]?.watch || []).map((row, idx) => <li key={idx}>{row}</li>)}
+              </ul>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -940,7 +1189,7 @@ function App() {
             />
           ) : nav === "Board" && (
             <div className="grid gap-4">
-              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <section id="tour-board-timeline" className={"rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition " + focusPulseClass("tour-board-timeline")}>
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-slate-800">Run Timeline by Dataset</h3>
                   <button onClick={() => refreshRuns().catch(() => {})} className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
@@ -960,6 +1209,7 @@ function App() {
                             selected={run.run_id === selectedRunId}
                             onSelect={(runId) => {
                               setSelectedRunId(runId);
+                              setWorkflowProgress((prev) => ({ ...prev, Board: true }));
                               goto(`/ui/runs/${encodeURIComponent(runId)}`);
                             }}
                             pinnedBaselineId={pinnedBaselineId}
@@ -1027,7 +1277,7 @@ function App() {
 
           {nav === "Runs" && (
             <section className="grid gap-4 md:grid-cols-2">
-              <div className={"rounded-xl border bg-white p-4 shadow-sm transition " + (highlightDatasetRegistry ? "border-blue-400 ring-2 ring-blue-300 shadow-lg" : "border-slate-200")}>
+              <div id="tour-runs-register" className={"rounded-xl border bg-white p-4 shadow-sm transition " + (highlightDatasetRegistry ? "border-blue-400 ring-2 ring-blue-300 shadow-lg" : "border-slate-200") + focusPulseClass("tour-runs-register")}>
                 <h3 className="text-sm font-semibold text-slate-800">Dataset Registry</h3>
                 {highlightDatasetRegistry && (
                   <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-800">
@@ -1057,14 +1307,23 @@ function App() {
                   </button>
                 </form>
               </div>
-              <div className={"rounded-xl border bg-white p-4 shadow-sm transition " + (highlightRunExecute ? "border-blue-400 ring-2 ring-blue-300 shadow-lg" : "border-slate-200")}>
-                <h3 className="text-sm font-semibold text-slate-800">Execute Candidate Run</h3>
+              <div id="tour-runs-execute" className={"rounded-xl border bg-white p-4 shadow-sm transition " + (highlightRunExecute ? "border-blue-400 ring-2 ring-blue-300 shadow-lg" : "border-slate-200") + focusPulseClass("tour-runs-execute")}>
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-slate-800">Execute Run</h3>
+                  <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-mono text-slate-700">{runForm.config_path}</span>
+                </div>
+                <p className="mt-1 text-xs text-slate-600">Choose a profile/config, then run with optional overrides.</p>
                 {highlightRunExecute && (
                   <div className="mt-2 rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-800">
                     <span className="inline-flex items-center gap-1 font-semibold">
                       <span className="h-2 w-2 animate-ping rounded-full bg-indigo-500" />
                       Next: execute baseline run to complete Step 1.
                     </span>
+                  </div>
+                )}
+                {tour.enabled && tourStep === "Runs" && nav === "Runs" && stepCompletion.Runs && (
+                  <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-800">
+                    <span className="font-semibold">Step 1 complete.</span> Click `Next` to move to Step 2, or optionally run a candidate variant now for later compare.
                   </div>
                 )}
                 {runExecution.status === "running" && (
@@ -1089,7 +1348,27 @@ function App() {
                     e.preventDefault();
                     if (runExecution.status === "running") return;
                     const payload = { ...runForm };
+                    payload.config_path = runForm.config_path;
                     if (!payload.model_name) delete payload.model_name;
+                    if (!runForm.seed.trim()) delete payload.seed;
+                    else payload.seed = Number(runForm.seed);
+                    if (!runForm.temperature.trim()) delete payload.temperature;
+                    else payload.temperature = Number(runForm.temperature);
+                    if (payload.seed !== undefined && Number.isNaN(payload.seed)) {
+                      setRunExecution({ status: "error", message: "Seed override must be a valid integer." });
+                      return;
+                    }
+                    if (payload.temperature !== undefined && Number.isNaN(payload.temperature)) {
+                      setRunExecution({ status: "error", message: "Temperature override must be a valid number." });
+                      return;
+                    }
+                    if (runForm.profile === "candidate" && runForm.baseline_from_pinned && pinnedBaselineId) {
+                      payload.baseline_run_id = pinnedBaselineId;
+                    } else {
+                      delete payload.baseline_run_id;
+                    }
+                    delete payload.profile;
+                    delete payload.baseline_from_pinned;
                     setRunExecution({
                       status: "running",
                       message: `Executing ${payload.config_path}${payload.model_name ? ` with ${payload.model_name}` : ""}...`,
@@ -1097,8 +1376,24 @@ function App() {
                     api("/runs/from-config", { method: "POST", body: JSON.stringify(payload) })
                       .then((res) => {
                         setSelectedRunId(res.run.run_id);
-                        setPinnedCandidateId(res.run.run_id);
+                        setWorkflowProgress((prev) => ({ ...prev, Runs: true, Board: true }));
+                        if (runForm.profile === "baseline") {
+                          setPinnedBaselineId(res.run.run_id);
+                        } else {
+                          setPinnedCandidateId(res.run.run_id);
+                        }
                         setExportForm((p) => ({ ...p, run_id: res.run.run_id }));
+                        setRunLaunchHistory((prev) => [
+                          {
+                            run_id: res.run.run_id,
+                            profile: runForm.profile,
+                            config_path: runForm.config_path,
+                            seed: runForm.seed || "config",
+                            temperature: runForm.temperature || "config",
+                            at: new Date().toISOString(),
+                          },
+                          ...prev,
+                        ].slice(0, 6));
                         setRunExecution({
                           status: "success",
                           message: `Run ${res.run.run_id} completed. Metrics and diagnostics are now available.`,
@@ -1113,10 +1408,25 @@ function App() {
                       });
                   }}
                 >
+                  <SelectField
+                    label="Run Profile"
+                    value={runForm.profile}
+                    onChange={(v) => {
+                      if (v === "baseline") setRunForm({ ...runForm, profile: v, config_path: CONFIG_PRESETS.baseline });
+                      else if (v === "candidate") setRunForm({ ...runForm, profile: v, config_path: CONFIG_PRESETS.candidate });
+                      else setRunForm({ ...runForm, profile: v });
+                    }}
+                    disabled={runExecution.status === "running"}
+                    options={[
+                      { value: "baseline", label: "Baseline" },
+                      { value: "candidate", label: "Candidate" },
+                      { value: "custom", label: "Custom" },
+                    ]}
+                  />
                   <Field
                     label="Config Path"
                     value={runForm.config_path}
-                    onChange={(v) => setRunForm({ config_path: v })}
+                    onChange={(v) => setRunForm({ ...runForm, config_path: v })}
                     required
                     disabled={runExecution.status === "running"}
                   />
@@ -1130,6 +1440,37 @@ function App() {
                       ...localModels.map((m) => ({ value: m, label: m })),
                     ]}
                   />
+                  <div className="grid gap-2 md:grid-cols-2 md:items-end">
+                    <Field
+                      label="Seed Override (Optional)"
+                      value={runForm.seed}
+                      onChange={(v) => setRunForm({ ...runForm, seed: v })}
+                      disabled={runExecution.status === "running"}
+                      placeholder="e.g. 42"
+                    />
+                    <Field
+                      label="Temperature Override"
+                      value={runForm.temperature}
+                      onChange={(v) => setRunForm({ ...runForm, temperature: v })}
+                      disabled={runExecution.status === "running"}
+                      placeholder="e.g. 0.0"
+                    />
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-700">
+                    <p><span className="font-semibold">Seed:</span> same seed improves reproducibility when config/model are unchanged.</p>
+                    <p className="mt-1"><span className="font-semibold">Temperature:</span> lower is steadier, higher is more diverse/random.</p>
+                  </div>
+                  {runForm.profile === "candidate" && (
+                    <label className="inline-flex items-center gap-2 text-xs text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={runForm.baseline_from_pinned}
+                        disabled={runExecution.status === "running"}
+                        onChange={(e) => setRunForm({ ...runForm, baseline_from_pinned: e.target.checked })}
+                      />
+                      Use pinned baseline for candidate gate checks ({pinnedBaselineId || "none pinned"})
+                    </label>
+                  )}
                   <button
                     type="submit"
                     disabled={runExecution.status === "running"}
@@ -1141,17 +1482,45 @@ function App() {
                         Running...
                       </>
                     ) : (
-                      "Execute Candidate Run"
+                      "Execute Run"
                     )}
                   </button>
                 </form>
+                <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700">
+                  <p className="font-semibold">Recent Launcher History</p>
+                  {runLaunchHistory.length === 0 ? (
+                    <p className="mt-1 text-slate-500">No runs launched from this UI session yet.</p>
+                  ) : (
+                    <div className="mt-1 max-h-28 space-y-1 overflow-auto">
+                      {runLaunchHistory.map((h, idx) => (
+                        <p key={idx} className="font-mono text-[11px]">
+                          {h.profile} | {h.config_path} | {h.run_id}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </section>
           )}
 
           {nav === "Compare" && (
-            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <section id="tour-compare" className={"rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition " + focusPulseClass("tour-compare")}>
               <h3 className="text-sm font-semibold text-slate-800">Assess Drift vs Baseline</h3>
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-2 text-xs">
+                  <p className="font-semibold text-blue-900">Baseline Setup</p>
+                  <p className="mt-1 font-mono text-[11px] text-slate-700">run_id: {pinnedBaselineId || "--"}</p>
+                  <p className="mt-1 text-slate-700">config: {(baselinePinnedRun?.metadata && baselinePinnedRun.metadata.config_path) || "--"}</p>
+                  <p className="text-slate-700">seed/temp: {baselinePinnedRun ? `${baselinePinnedRun.seed} / ${baselinePinnedRun.temperature}` : "--"}</p>
+                </div>
+                <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-2 text-xs">
+                  <p className="font-semibold text-indigo-900">Candidate Setup</p>
+                  <p className="mt-1 font-mono text-[11px] text-slate-700">run_id: {pinnedCandidateId || "--"}</p>
+                  <p className="mt-1 text-slate-700">config: {(candidatePinnedRun?.metadata && candidatePinnedRun.metadata.config_path) || "--"}</p>
+                  <p className="text-slate-700">seed/temp: {candidatePinnedRun ? `${candidatePinnedRun.seed} / ${candidatePinnedRun.temperature}` : "--"}</p>
+                </div>
+              </div>
               <div className="mt-2 flex flex-wrap gap-2 text-xs">
                 <button
                   type="button"
@@ -1178,7 +1547,10 @@ function App() {
                       },
                     },
                   };
-                  api("/compare", { method: "POST", body: JSON.stringify(payload) }).then((res) => setCompare(res.compare));
+                  api("/compare", { method: "POST", body: JSON.stringify(payload) }).then((res) => {
+                    setCompare(res.compare);
+                    setWorkflowProgress((prev) => ({ ...prev, Compare: true }));
+                  });
                 }}
               >
                 <Field label="Baseline Run ID" value={compareForm.baseline_run_id} onChange={(v) => setCompareForm({ ...compareForm, baseline_run_id: v })} required />
@@ -1230,7 +1602,7 @@ function App() {
           )}
 
           {nav === "Diagnostics" && (
-            <section className="grid gap-4 md:grid-cols-2">
+            <section id="tour-diagnostics" className={"grid gap-4 md:grid-cols-2 transition " + focusPulseClass("tour-diagnostics")}>
               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <h3 className="text-sm font-semibold text-slate-800">Deterministic Scoring Breakdown</h3>
                 <p className="mt-1 text-xs text-slate-600">Per-tag aggregation from run item results.</p>
@@ -1296,7 +1668,7 @@ function App() {
           )}
 
           {nav === "Artifacts" && (
-            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <section id="tour-artifacts" className={"rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition " + focusPulseClass("tour-artifacts")}>
               <h3 className="text-sm font-semibold text-slate-800">Publish Evaluation Artifacts</h3>
               <form
                 className="mt-3 grid gap-2 md:grid-cols-2"
@@ -1304,7 +1676,10 @@ function App() {
                   e.preventDefault();
                   const payload = { ...exportForm };
                   if (!payload.baseline_run_id) delete payload.baseline_run_id;
-                  api("/reports/export", { method: "POST", body: JSON.stringify(payload) }).then((res) => setArtifacts(res.artifacts));
+                  api("/reports/export", { method: "POST", body: JSON.stringify(payload) }).then((res) => {
+                    setArtifacts(res.artifacts);
+                    setWorkflowProgress((prev) => ({ ...prev, Artifacts: true }));
+                  });
                 }}
               >
                 <Field label="Run ID" value={exportForm.run_id} onChange={(v) => setExportForm({ ...exportForm, run_id: v })} required />
@@ -1385,10 +1760,7 @@ function App() {
             </button>
             <button
               type="button"
-              onClick={() => {
-                setNav(tourStep);
-                goto("/ui");
-              }}
+              onClick={takeMeThere}
               className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
             >
               Take Me There
@@ -1405,12 +1777,44 @@ function App() {
             ) : (
               <button
                 type="button"
-                onClick={() => setTour({ enabled: false, index: 0 })}
-                className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                disabled={!canAdvanceTour}
+                onClick={() => {
+                  setTour({ enabled: false, index: 0 });
+                  triggerCelebration();
+                }}
+                className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
               >
                 Finish
               </button>
             )}
+          </div>
+        </section>
+      )}
+      {showCelebration && (
+        <section className="pointer-events-none fixed inset-0 z-[60] flex items-center justify-center">
+          <div className="absolute inset-0 bg-slate-900/30" />
+          <div className="relative rounded-2xl border border-emerald-200 bg-white px-6 py-5 text-center shadow-2xl">
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Workflow Complete</p>
+            <h3 className="mt-1 text-lg font-semibold text-slate-900">Evidence Published Successfully</h3>
+            <p className="mt-1 text-sm text-slate-600">You completed the full AI evaluation release workflow.</p>
+            <div className="mt-3 flex justify-center gap-2">
+              <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-blue-500" />
+              <span className="h-2.5 w-2.5 animate-ping rounded-full bg-emerald-500" />
+              <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-indigo-500" />
+            </div>
+          </div>
+          <div className="absolute inset-0 overflow-hidden">
+            {Array.from({ length: 18 }).map((_, idx) => (
+              <span
+                key={idx}
+                className="absolute h-2 w-2 animate-ping rounded-full bg-blue-300/80"
+                style={{
+                  left: `${(idx * 17) % 100}%`,
+                  top: `${(idx * 29) % 100}%`,
+                  animationDelay: `${(idx % 6) * 120}ms`,
+                }}
+              />
+            ))}
           </div>
         </section>
       )}

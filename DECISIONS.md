@@ -29,3 +29,13 @@
 - Hid `Release Decision` until baseline/candidate pinning plus comparison are complete; replaced early empty panel with a lightweight prerequisite hint state.
 - Refactored Run Identity rendering to card-based fingerprint blocks with wrapping (`break-all`) to prevent overlap and improve readability.
 - Added run-execution animation and disabled-state controls to make long-running evaluation actions visibly in progress.
+
+## 2026-02-26 (Checkpoint 1539)
+- Added UI-first run setup controls: profile-based config selection, explicit config visibility, launcher history, seed/temperature overrides with guidance, and pinned-baseline auto-handoff for candidate runs.
+- Extended API/service run-from-config flow to support runtime overrides (`seed`, `temperature`, `baseline_run_id`) while preserving reproducibility metadata.
+- Added frontend and backend reset controls: workflow-cycle reset (UI-only state) and full app data reset endpoint (`/admin/reset`) with report cleanup.
+- Added compare setup summary card to reduce run-id copy/paste and improve contextual clarity of baseline vs candidate setup.
+- Improved guided tour directionality with section anchors, smooth-scroll targeting, and pulse spotlight on destination.
+- Added Step Insights educational panel (expect/watch guidance) and post-tour celebration overlay for completion feedback.
+- Added persistent light/dark mode toggle with local storage state and template-level dark CSS overrides.
+- Kept checkpoint artifacts local-only by honoring `.gitignore` rules for `PROJECT_STATE.md` and `CHECKPOINTS/*`.

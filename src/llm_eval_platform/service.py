@@ -30,13 +30,56 @@ class EvalService:
         )
         self.app_config = app_config
 
-    def run_from_config(self, path: Path, model_name: str | None = None):
+    def run_from_config(
+        self,
+        path: Path,
+        model_name: str | None = None,
+        *,
+        seed: int | None = None,
+        temperature: float | None = None,
+        baseline_run_id: str | None = None,
+    ):
         payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+        payload.setdefault("variant", {})
+        payload.setdefault("gates", {})
         if model_name:
-            payload.setdefault("variant", {})
             payload["variant"]["model_name"] = model_name
+        if seed is not None:
+            payload["variant"]["seed"] = int(seed)
+        if temperature is not None:
+            payload["variant"]["temperature"] = float(temperature)
+        if baseline_run_id is not None:
+            payload["gates"]["baseline_run_id"] = baseline_run_id
         run_config = EvalRunConfig.model_validate(payload)
-        return self.runner.run(run_config)
+        run = self.runner.run(run_config)
+        metadata = dict(run.metadata or {})
+        metadata["config_path"] = str(path)
+        if model_name:
+            metadata["model_override"] = model_name
+        if seed is not None:
+            metadata["seed_override"] = int(seed)
+        if temperature is not None:
+            metadata["temperature_override"] = float(temperature)
+        if baseline_run_id is not None:
+            metadata["baseline_run_id_override"] = baseline_run_id
+        self.repository.update_run_metadata(run_id=run.run_id, metadata=metadata)
+        updated = self.repository.get_run(run.run_id)
+        if updated is None:
+            raise RuntimeError(f"Run {run.run_id} not found after metadata update.")
+        return updated
+
+    def reset_application_data(self, *, clear_reports: bool = True) -> dict:
+        self.repository.reset_application_data()
+        cleared_reports: list[str] = []
+        if clear_reports:
+            for suffix in ("*.md", "*.json"):
+                for file in self.app_config.report_dir.glob(suffix):
+                    try:
+                        file.unlink(missing_ok=True)
+                        cleared_reports.append(str(file))
+                    except Exception:
+                        continue
+        return {"status": "ok", "cleared_reports": cleared_reports}
 
     def compare_runs(
         self,

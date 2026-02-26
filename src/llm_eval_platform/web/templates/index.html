@@ -27,6 +27,35 @@
         }
       };
     </script>
+    <style>
+      :root[data-theme="dark"] body {
+        background: linear-gradient(135deg, #020617 0%, #0f172a 40%, #1e293b 100%);
+        color: #e2e8f0;
+      }
+      :root[data-theme="dark"] .bg-white { background-color: #0f172a !important; }
+      :root[data-theme="dark"] .bg-slate-50 { background-color: #111827 !important; }
+      :root[data-theme="dark"] .bg-slate-100 { background-color: #1e293b !important; }
+      :root[data-theme="dark"] .text-slate-900,
+      :root[data-theme="dark"] .text-slate-800,
+      :root[data-theme="dark"] .text-slate-700 { color: #e2e8f0 !important; }
+      :root[data-theme="dark"] .text-slate-600,
+      :root[data-theme="dark"] .text-slate-500 { color: #94a3b8 !important; }
+      :root[data-theme="dark"] .border-slate-200,
+      :root[data-theme="dark"] .border-slate-100,
+      :root[data-theme="dark"] .border-blue-200 { border-color: #334155 !important; }
+      :root[data-theme="dark"] .bg-blue-50 { background-color: rgba(30, 58, 138, 0.35) !important; }
+      :root[data-theme="dark"] .bg-indigo-50 { background-color: rgba(49, 46, 129, 0.35) !important; }
+      :root[data-theme="dark"] .bg-emerald-50 { background-color: rgba(6, 78, 59, 0.35) !important; }
+      :root[data-theme="dark"] .bg-rose-50 { background-color: rgba(136, 19, 55, 0.35) !important; }
+      :root[data-theme="dark"] .bg-amber-50 { background-color: rgba(120, 53, 15, 0.35) !important; }
+      :root[data-theme="dark"] input,
+      :root[data-theme="dark"] select,
+      :root[data-theme="dark"] textarea {
+        background-color: #0b1220 !important;
+        color: #e2e8f0 !important;
+        border-color: #334155 !important;
+      }
+    </style>
   </head>
   <body class="min-h-screen bg-gradient-to-br from-brand-50 via-white to-sky-100 text-slate-900">
     <div id="root"></div>
