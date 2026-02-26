@@ -5,4 +5,7 @@ __pycache__/
 llm_eval.db
 reports/*.md
 reports/*.json
-
+INTERVIEW_TALK_TRACK.md
+PROJECT_STATE.md
+DECISIONS.md
+CHECKPOINTS/*

@@ -2,6 +2,40 @@ const { useEffect, useMemo, useState } = React;
 
 const NAV = ["Board", "Runs", "Compare", "Diagnostics", "Artifacts"];
 const METRICS = ["exact_match", "keyword_coverage", "schema_valid", "llm_judge_score"];
+const STEP_ORDER = ["Runs", "Board", "Diagnostics", "Compare", "Artifacts"];
+
+const STEP_COPY = {
+  Runs: {
+    title: "1. Setup and Execute",
+    what: "Register a dataset version, choose a config, and start a run.",
+    why: "This locks experiment inputs and creates a reproducible run artifact.",
+    doneWhen: "Done when at least one run exists.",
+  },
+  Board: {
+    title: "2. Inspect Runs",
+    what: "Review run cards, pin baseline/candidate, and inspect metric snapshots.",
+    why: "Runs are first-class release candidates with identity, status, and metrics.",
+    doneWhen: "Done when a run is selected.",
+  },
+  Diagnostics: {
+    title: "3. Debug Quality",
+    what: "Inspect tag slices, failure clusters, and error diagnostics.",
+    why: "You need root-cause visibility before deciding whether drift is acceptable.",
+    doneWhen: "Done when diagnostics data is loaded for a selected run.",
+  },
+  Compare: {
+    title: "4. Apply Gates",
+    what: "Compare pinned runs and evaluate allowed drop thresholds.",
+    why: "Regression gates convert metrics into release control policy.",
+    doneWhen: "Done when baseline vs candidate comparison is executed.",
+  },
+  Artifacts: {
+    title: "5. Publish Evidence",
+    what: "Export markdown/json reports and metrics snapshots.",
+    why: "Artifacts make results portable for reviews, audits, and portfolio evidence.",
+    doneWhen: "Done when report artifacts are exported.",
+  },
+};
 
 function readPath() {
   return window.location.pathname || "/ui";
@@ -54,29 +88,31 @@ async function callApi(path, options = {}) {
   return body;
 }
 
-function Field({ label, value, onChange, required = false, placeholder = "" }) {
+function Field({ label, value, onChange, required = false, placeholder = "", disabled = false }) {
   return (
     <label className="flex flex-col gap-1 text-xs">
       <span className="font-medium text-slate-600">{label}</span>
       <input
-        className="rounded-lg border border-blue-200 bg-white px-2.5 py-2 text-sm outline-none ring-blue-400 focus:ring-2"
+        className="rounded-lg border border-blue-200 bg-white px-2.5 py-2 text-sm outline-none ring-blue-400 focus:ring-2 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         required={required}
         placeholder={placeholder}
+        disabled={disabled}
       />
     </label>
   );
 }
 
-function SelectField({ label, value, onChange, options }) {
+function SelectField({ label, value, onChange, options, disabled = false }) {
   return (
     <label className="flex flex-col gap-1 text-xs">
       <span className="font-medium text-slate-600">{label}</span>
       <select
-        className="rounded-lg border border-blue-200 bg-white px-2.5 py-2 text-sm outline-none ring-blue-400 focus:ring-2"
+        className="rounded-lg border border-blue-200 bg-white px-2.5 py-2 text-sm outline-none ring-blue-400 focus:ring-2 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
       >
         {options.map((opt) => (
           <option key={opt.value} value={opt.value}>
@@ -425,7 +461,7 @@ function RunDetailPage({
 }
 
 function App() {
-  const [nav, setNav] = useState("Board");
+  const [nav, setNav] = useState("Runs");
   const [routePath, setRoutePath] = useState(readPath());
   const [runs, setRuns] = useState([]);
   const [selectedRunId, setSelectedRunId] = useState("");
@@ -443,13 +479,15 @@ function App() {
   const [localModels, setLocalModels] = useState([]);
   const [pinnedBaselineId, setPinnedBaselineId] = useState("");
   const [pinnedCandidateId, setPinnedCandidateId] = useState("");
+  const [runExecution, setRunExecution] = useState({ status: "idle", message: "" });
+  const [datasetRegistered, setDatasetRegistered] = useState(false);
 
   const [registerForm, setRegisterForm] = useState({
     dataset_name: "sample_benchmark",
     version: "v1",
     path: "datasets/sample_benchmark.jsonl",
   });
-  const [runForm, setRunForm] = useState({ config_path: "configs/candidate.yaml", model_name: "" });
+  const [runForm, setRunForm] = useState({ config_path: "configs/baseline.yaml", model_name: "" });
   const [compareForm, setCompareForm] = useState({
     baseline_run_id: "",
     candidate_run_id: "",
@@ -460,6 +498,7 @@ function App() {
   const [timelinePagination, setTimelinePagination] = useState({ limit: 20, offset: 0 });
   const [tagPagination, setTagPagination] = useState({ limit: 50, offset: 0 });
   const [exportForm, setExportForm] = useState({ run_id: "", baseline_run_id: "", output_dir: "reports" });
+  const [tour, setTour] = useState({ enabled: false, index: 0 });
 
   async function api(path, options = {}) {
     const ts = new Date().toISOString();
@@ -532,6 +571,7 @@ function App() {
 
   useEffect(() => {
     if (runs.length === 0) return;
+    setDatasetRegistered(true);
     if (!selectedRunId) setSelectedRunId(runs[0].run_id);
     if (!pinnedCandidateId) setPinnedCandidateId(runs[0].run_id);
     if (!pinnedBaselineId && runs.length > 1) setPinnedBaselineId(runs[1].run_id);
@@ -573,6 +613,7 @@ function App() {
     if (compared && !gatePassed) blockers.push("Regression gate failed.");
     return { candidateReady, baselineReady, compared, gatePassed, exported, blockers };
   }, [pinnedCandidateId, pinnedBaselineId, compare, artifacts]);
+  const showReleaseDecision = releaseChecklist.baselineReady && releaseChecklist.candidateReady && releaseChecklist.compared;
 
   const tagBreakdown = useMemo(() => {
     const acc = {};
@@ -598,6 +639,22 @@ function App() {
   const activeReleaseStatus = releaseDecision?.release_status || selectedRun?.release_status || "BLOCKED";
   const metricDeltas = compare?.deltas || {};
   const isRunDetailRoute = /^\/ui\/runs\/[^/]+$/.test(routePath);
+  const tourStep = STEP_ORDER[Math.max(0, Math.min(tour.index, STEP_ORDER.length - 1))];
+  const activeStep = tour.enabled ? tourStep : (isRunDetailRoute ? "Board" : nav);
+  const activeStepIndex = Math.max(0, STEP_ORDER.indexOf(activeStep));
+  const stepCompletion = {
+    Runs: runs.length > 0,
+    Board: !!selectedRunId,
+    Diagnostics: results.length > 0 || tagBreakdown.length > 0,
+    Compare: !!compare,
+    Artifacts: !!artifacts,
+  };
+  const isStepUnlocked = (idx) => (idx <= 0 ? true : STEP_ORDER.slice(0, idx).every((s) => !!stepCompletion[s]));
+  const canAdvanceTour = !!stepCompletion[tourStep];
+  const tourProgressPct = Math.round(((Math.max(0, tour.index) + 1) / STEP_ORDER.length) * 100);
+  const runsTourPhase = !datasetRegistered ? "register" : "execute";
+  const highlightDatasetRegistry = tour.enabled && tourStep === "Runs" && nav === "Runs" && runsTourPhase === "register";
+  const highlightRunExecute = tour.enabled && tourStep === "Runs" && nav === "Runs" && runsTourPhase === "execute";
 
   const comparePinned = () => {
     if (!pinnedBaselineId || !pinnedCandidateId) return;
@@ -614,6 +671,15 @@ function App() {
     };
     setCompareForm((prev) => ({ ...prev, baseline_run_id: pinnedBaselineId, candidate_run_id: pinnedCandidateId }));
     api("/compare", { method: "POST", body: JSON.stringify(payload) }).then((res) => setCompare(res.compare));
+  };
+
+  const goToTourStep = (index, force = false) => {
+    const clamped = Math.max(0, Math.min(index, STEP_ORDER.length - 1));
+    if (!force && clamped > tour.index && !isStepUnlocked(clamped)) return;
+    const step = STEP_ORDER[clamped];
+    setTour((prev) => ({ ...prev, index: clamped }));
+    setNav(step);
+    goto("/ui");
   };
 
   const metricTrends = useMemo(() => {
@@ -637,28 +703,121 @@ function App() {
         <p className="text-xs font-semibold uppercase tracking-widest text-blue-100">Local-First AI Release Cockpit</p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">LLM Evaluation Platform</h1>
         <p className="mt-2 text-sm text-blue-100">
-          Dataset → Variant → Run → Metrics → Gates → Compare → Release Decision → Export
+          Dataset -> Variant -> Run -> Metrics -> Gates -> Compare -> Release Decision -> Export
         </p>
       </header>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-12">
-        <aside className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm xl:col-span-2">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-600">Workflow</h2>
-          <div className="mt-2 flex flex-col gap-1">
-            {NAV.map((item) => (
+      <section className="mt-4 rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50 via-white to-blue-100 p-4 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Guided Workflow</p>
+            <p className="text-sm text-slate-700">Move step by step through execution, analysis, gating, and export.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full border border-blue-200 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700">
+              Current Step: {STEP_COPY[activeStep]?.title || activeStep}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                if (tour.enabled) {
+                  setTour({ enabled: false, index: 0 });
+                } else {
+                  setTour({ enabled: true, index: 0 });
+                  goToTourStep(0, true);
+                }
+              }}
+              className={"rounded-full px-2.5 py-1 text-xs font-semibold transition " + (tour.enabled ? "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100" : "border border-blue-200 bg-blue-600 text-white hover:bg-blue-700")}
+            >
+              {tour.enabled ? "Exit Tour" : "Start Tour"}
+            </button>
+          </div>
+        </div>
+        <div className="mt-3 grid gap-2 md:grid-cols-5">
+          {STEP_ORDER.map((step, idx) => {
+            const isActive = step === activeStep;
+            const isComplete = !!stepCompletion[step];
+            const prereqComplete = idx === 0 ? true : STEP_ORDER.slice(0, idx).every((s) => !!stepCompletion[s]);
+            const locked = !prereqComplete && !isActive;
+            return (
               <button
-                key={item}
+                key={step}
+                type="button"
+                disabled={locked}
                 onClick={() => {
-                  setNav(item);
+                  if (locked) return;
+                  setNav(step);
                   goto("/ui");
                 }}
                 className={
-                  "rounded-lg px-2 py-2 text-left text-sm font-medium " +
-                  (nav === item ? "bg-blue-600 text-white" : "text-slate-700 hover:bg-blue-50")
+                  "rounded-xl border p-2 text-left transition duration-300 disabled:cursor-not-allowed " +
+                  (isActive
+                    ? "border-blue-400 bg-blue-600 text-white shadow"
+                    : isComplete
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                      : !locked
+                        ? "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50"
+                        : "border-slate-200 bg-slate-50 text-slate-400")
                 }
               >
-                {item}
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold">{STEP_COPY[step].title}</p>
+                  {isActive ? (
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
+                  ) : isComplete ? (
+                    <span className="text-[10px] font-bold">OK</span>
+                  ) : locked ? (
+                    <span className="text-[10px] font-bold">LOCK</span>
+                  ) : (
+                    <span className="text-[10px] font-bold">-</span>
+                  )}
+                </div>
+                <p className={"mt-1 text-[11px] " + (isActive ? "text-blue-100" : "text-slate-600")}>{STEP_COPY[step].what}</p>
+                <p className={"mt-1 text-[10px] " + (isActive ? "text-blue-200" : "text-slate-500")}>{STEP_COPY[step].doneWhen}</p>
               </button>
+            );
+          })}
+        </div>
+        <div className="mt-3 rounded-xl border border-blue-200 bg-white p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Why This Step Matters</p>
+          <p className="mt-1 text-sm text-slate-700">{STEP_COPY[activeStep]?.why}</p>
+        </div>
+      </section>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-12">
+        <aside className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm xl:col-span-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-600">Workspace</h2>
+          <div className="mt-2 flex flex-col gap-1">
+            {NAV.map((item) => (
+              (() => {
+                const idx = STEP_ORDER.indexOf(item);
+                const prereqComplete = idx <= 0 ? true : STEP_ORDER.slice(0, idx).every((s) => !!stepCompletion[s]);
+                const locked = !prereqComplete;
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    disabled={locked}
+                    onClick={() => {
+                      if (locked) return;
+                      setNav(item);
+                      goto("/ui");
+                    }}
+                    className={
+                      "rounded-lg px-2 py-2 text-left text-sm font-medium transition disabled:cursor-not-allowed " +
+                      (nav === item
+                        ? "bg-blue-600 text-white"
+                        : locked
+                          ? "bg-slate-100 text-slate-400"
+                          : "text-slate-700 hover:bg-blue-50")
+                    }
+                    title={locked ? `Locked: complete ${STEP_COPY[STEP_ORDER[Math.max(0, idx - 1)]].title} first.` : ""}
+                  >
+                    {item}
+                    {locked ? " (locked)" : ""}
+                  </button>
+                );
+              })()
             ))}
           </div>
         </aside>
@@ -689,36 +848,77 @@ function App() {
 
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h3 className="text-sm font-semibold text-slate-800">Run Identity</h3>
+            <p className="mt-1 text-xs text-slate-500">Immutable fingerprints for reproducibility and auditability.</p>
             <div className="mt-2 grid gap-2 text-xs md:grid-cols-2">
-              <p><span className="font-semibold">Experiment Signature:</span> <span className="font-mono">{selectedRun?.experiment_signature || "--"}</span></p>
-              <p><span className="font-semibold">Config Fingerprint:</span> <span className="font-mono">{selectedRun?.config_fingerprint || "--"}</span></p>
-              <p><span className="font-semibold">Prompt Fingerprint:</span> <span className="font-mono">{selectedRun?.prompt_fingerprint || "--"}</span></p>
-              <p><span className="font-semibold">Dataset Fingerprint:</span> <span className="font-mono">{selectedRun?.dataset_fingerprint || "--"}</span></p>
-              <p><span className="font-semibold">Seed:</span> {selectedRun?.seed ?? "--"}</p>
-              <p><span className="font-semibold">Temperature:</span> {selectedRun?.temperature ?? "--"}</p>
+              <div className="min-w-0 rounded-lg border border-slate-100 p-2">
+                <p className="font-semibold text-slate-700">Experiment Signature</p>
+                <code className="mt-1 block break-all rounded bg-slate-50 px-2 py-1 font-mono text-[11px] text-slate-700">{selectedRun?.experiment_signature || "--"}</code>
+              </div>
+              <div className="min-w-0 rounded-lg border border-slate-100 p-2">
+                <p className="font-semibold text-slate-700">Config Fingerprint</p>
+                <code className="mt-1 block break-all rounded bg-slate-50 px-2 py-1 font-mono text-[11px] text-slate-700">{selectedRun?.config_fingerprint || "--"}</code>
+              </div>
+              <div className="min-w-0 rounded-lg border border-slate-100 p-2">
+                <p className="font-semibold text-slate-700">Prompt Fingerprint</p>
+                <code className="mt-1 block break-all rounded bg-slate-50 px-2 py-1 font-mono text-[11px] text-slate-700">{selectedRun?.prompt_fingerprint || "--"}</code>
+              </div>
+              <div className="min-w-0 rounded-lg border border-slate-100 p-2">
+                <p className="font-semibold text-slate-700">Dataset Fingerprint</p>
+                <code className="mt-1 block break-all rounded bg-slate-50 px-2 py-1 font-mono text-[11px] text-slate-700">{selectedRun?.dataset_fingerprint || "--"}</code>
+              </div>
+              <div className="rounded-lg border border-slate-100 p-2">
+                <p className="font-semibold text-slate-700">Seed</p>
+                <p className="mt-1 rounded bg-slate-50 px-2 py-1 font-mono text-[11px] text-slate-700">{selectedRun?.seed ?? "--"}</p>
+              </div>
+              <div className="rounded-lg border border-slate-100 p-2">
+                <p className="font-semibold text-slate-700">Temperature</p>
+                <p className="mt-1 rounded bg-slate-50 px-2 py-1 font-mono text-[11px] text-slate-700">{selectedRun?.temperature ?? "--"}</p>
+              </div>
             </div>
           </section>
 
-          <section className={"rounded-xl border p-4 shadow-sm " + (releaseChecklist.blockers.length ? "border-rose-200 bg-rose-50" : "border-emerald-200 bg-emerald-50")}>
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-800">Release Decision</h3>
-              <span className={"rounded-full px-2 py-0.5 text-xs font-semibold " + gateChip(releaseChecklist.gatePassed ? "pass" : "fail")}>
-                {releaseChecklist.blockers.length ? "Blocked" : "Ready"}
-              </span>
-            </div>
-            <div className="mt-2 grid gap-1 text-xs text-slate-700 md:grid-cols-2">
-              <p>{releaseChecklist.baselineReady ? "✓ Baseline pinned" : "• Baseline not pinned"}</p>
-              <p>{releaseChecklist.candidateReady ? "✓ Candidate pinned" : "• Candidate not pinned"}</p>
-              <p>{releaseChecklist.compared ? "✓ Drift assessed" : "• Compare not executed"}</p>
-              <p>{releaseChecklist.gatePassed ? "✓ Regression gate passed" : "• Gate not passed"}</p>
-              <p>{releaseChecklist.exported ? "✓ Artifacts exported" : "• Artifacts pending"}</p>
-            </div>
-            {releaseChecklist.blockers.length > 0 && (
-              <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-rose-700">
-                {releaseChecklist.blockers.map((b, i) => <li key={i}>{b}</li>)}
-              </ul>
-            )}
-          </section>
+          {showReleaseDecision && (
+            <section className={"rounded-xl border p-4 shadow-sm " + (releaseChecklist.blockers.length ? "border-rose-200 bg-rose-50" : "border-emerald-200 bg-emerald-50")}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-800">Release Decision</h3>
+                <span className={"rounded-full px-2 py-0.5 text-xs font-semibold " + gateChip(releaseChecklist.gatePassed ? "pass" : "fail")}>
+                  {releaseChecklist.blockers.length ? "Blocked" : "Ready"}
+                </span>
+              </div>
+              <div className="mt-2 grid gap-1 text-xs text-slate-700 md:grid-cols-2">
+                <p>{releaseChecklist.baselineReady ? "OK Baseline pinned" : "- Baseline not pinned"}</p>
+                <p>{releaseChecklist.candidateReady ? "OK Candidate pinned" : "- Candidate not pinned"}</p>
+                <p>{releaseChecklist.compared ? "OK Drift assessed" : "- Compare not executed"}</p>
+                <p>{releaseChecklist.gatePassed ? "OK Regression gate passed" : "- Gate not passed"}</p>
+                <p>{releaseChecklist.exported ? "OK Artifacts exported" : "- Artifacts pending"}</p>
+              </div>
+              {releaseChecklist.blockers.length > 0 && (
+                <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-rose-700">
+                  {releaseChecklist.blockers.map((b, i) => <li key={i}>{b}</li>)}
+                </ul>
+              )}
+            </section>
+          )}
+          {!showReleaseDecision && (
+            <section className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-semibold text-slate-800">Release Decision Hidden</p>
+                <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px]">Waiting on prerequisites</span>
+              </div>
+              <p className="mt-1 text-slate-600">This panel appears after baseline and candidate are pinned and a comparison has been executed.</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <span className={"rounded px-2 py-0.5 " + (releaseChecklist.baselineReady ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600")}>
+                  {releaseChecklist.baselineReady ? "OK baseline pinned" : "baseline not pinned"}
+                </span>
+                <span className={"rounded px-2 py-0.5 " + (releaseChecklist.candidateReady ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600")}>
+                  {releaseChecklist.candidateReady ? "OK candidate pinned" : "candidate not pinned"}
+                </span>
+                <span className={"rounded px-2 py-0.5 " + (releaseChecklist.compared ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600")}>
+                  {releaseChecklist.compared ? "OK compare complete" : "compare not executed"}
+                </span>
+              </div>
+            </section>
+          )}
 
           {isRunDetailRoute ? (
             <RunDetailPage
@@ -827,14 +1027,25 @@ function App() {
 
           {nav === "Runs" && (
             <section className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className={"rounded-xl border bg-white p-4 shadow-sm transition " + (highlightDatasetRegistry ? "border-blue-400 ring-2 ring-blue-300 shadow-lg" : "border-slate-200")}>
                 <h3 className="text-sm font-semibold text-slate-800">Dataset Registry</h3>
+                {highlightDatasetRegistry && (
+                  <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-800">
+                    <span className="inline-flex items-center gap-1 font-semibold">
+                      <span className="h-2 w-2 animate-ping rounded-full bg-blue-500" />
+                      Start here: register dataset version first.
+                    </span>
+                  </div>
+                )}
                 <form
                   className="mt-3 grid gap-2"
                   onSubmit={(e) => {
                     e.preventDefault();
                     api("/datasets/register", { method: "POST", body: JSON.stringify(registerForm) })
-                      .then(() => refreshRuns())
+                      .then(() => {
+                        setDatasetRegistered(true);
+                        refreshRuns();
+                      })
                       .catch(() => {});
                   }}
                 >
@@ -846,36 +1057,92 @@ function App() {
                   </button>
                 </form>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className={"rounded-xl border bg-white p-4 shadow-sm transition " + (highlightRunExecute ? "border-blue-400 ring-2 ring-blue-300 shadow-lg" : "border-slate-200")}>
                 <h3 className="text-sm font-semibold text-slate-800">Execute Candidate Run</h3>
+                {highlightRunExecute && (
+                  <div className="mt-2 rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-800">
+                    <span className="inline-flex items-center gap-1 font-semibold">
+                      <span className="h-2 w-2 animate-ping rounded-full bg-indigo-500" />
+                      Next: execute baseline run to complete Step 1.
+                    </span>
+                  </div>
+                )}
+                {runExecution.status === "running" && (
+                  <div className="mt-3 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                    <span className="h-2 w-2 animate-ping rounded-full bg-blue-500" />
+                    <span className="font-medium">{runExecution.message || "Running evaluation. This can take up to a few minutes depending on model latency."}</span>
+                  </div>
+                )}
+                {runExecution.status === "success" && (
+                  <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                    {runExecution.message}
+                  </div>
+                )}
+                {runExecution.status === "error" && (
+                  <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                    {runExecution.message}
+                  </div>
+                )}
                 <form
                   className="mt-3 grid gap-2"
                   onSubmit={(e) => {
                     e.preventDefault();
+                    if (runExecution.status === "running") return;
                     const payload = { ...runForm };
                     if (!payload.model_name) delete payload.model_name;
+                    setRunExecution({
+                      status: "running",
+                      message: `Executing ${payload.config_path}${payload.model_name ? ` with ${payload.model_name}` : ""}...`,
+                    });
                     api("/runs/from-config", { method: "POST", body: JSON.stringify(payload) })
                       .then((res) => {
                         setSelectedRunId(res.run.run_id);
                         setPinnedCandidateId(res.run.run_id);
                         setExportForm((p) => ({ ...p, run_id: res.run.run_id }));
+                        setRunExecution({
+                          status: "success",
+                          message: `Run ${res.run.run_id} completed. Metrics and diagnostics are now available.`,
+                        });
                         refreshRuns();
                       })
-                      .catch(() => {});
+                      .catch((err) => {
+                        setRunExecution({
+                          status: "error",
+                          message: `Run failed to start: ${String(err).replace(/^Error:\s*/, "")}`,
+                        });
+                      });
                   }}
                 >
-                  <Field label="Config Path" value={runForm.config_path} onChange={(v) => setRunForm({ config_path: v })} required />
+                  <Field
+                    label="Config Path"
+                    value={runForm.config_path}
+                    onChange={(v) => setRunForm({ config_path: v })}
+                    required
+                    disabled={runExecution.status === "running"}
+                  />
                   <SelectField
                     label="Override Model (Local Ollama)"
                     value={runForm.model_name}
                     onChange={(v) => setRunForm({ ...runForm, model_name: v })}
+                    disabled={runExecution.status === "running"}
                     options={[
                       { value: "", label: "Use model from config" },
                       ...localModels.map((m) => ({ value: m, label: m })),
                     ]}
                   />
-                  <button className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                    Execute Candidate Run
+                  <button
+                    type="submit"
+                    disabled={runExecution.status === "running"}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400"
+                  >
+                    {runExecution.status === "running" ? (
+                      <>
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-100 border-t-blue-600" />
+                        Running...
+                      </>
+                    ) : (
+                      "Execute Candidate Run"
+                    )}
                   </button>
                 </form>
               </div>
@@ -1086,8 +1353,70 @@ function App() {
           </section>
         </aside>
       </div>
+
+      {tour.enabled && (
+        <section className="fixed bottom-4 right-4 z-50 w-[360px] max-w-[calc(100vw-2rem)] rounded-2xl border border-blue-300 bg-white/95 p-4 shadow-2xl backdrop-blur">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Guided Tour</p>
+            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">{tour.index + 1}/{STEP_ORDER.length}</span>
+          </div>
+          <h4 className="mt-1 text-sm font-semibold text-slate-900">{STEP_COPY[tourStep].title}</h4>
+          <p className="mt-1 text-xs text-slate-700">{STEP_COPY[tourStep].what}</p>
+          <div className="mt-2 rounded-lg border border-blue-100 bg-blue-50 p-2">
+            <p className="text-[11px] font-semibold text-blue-700">Why</p>
+            <p className="text-xs text-blue-900">{STEP_COPY[tourStep].why}</p>
+          </div>
+          <div className="mt-3 h-2 rounded bg-slate-100">
+            <div className="h-2 rounded bg-blue-500 transition-all duration-500" style={{ width: `${tourProgressPct}%` }} />
+          </div>
+          {!canAdvanceTour && (
+            <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+              Complete this step first to unlock the next step in the tour.
+            </p>
+          )}
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              disabled={tour.index === 0}
+              onClick={() => goToTourStep(tour.index - 1)}
+              className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setNav(tourStep);
+                goto("/ui");
+              }}
+              className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+            >
+              Take Me There
+            </button>
+            {tour.index < STEP_ORDER.length - 1 ? (
+              <button
+                type="button"
+                disabled={!canAdvanceTour}
+                onClick={() => goToTourStep(tour.index + 1)}
+                className="rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+              >
+                Next
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setTour({ enabled: false, index: 0 })}
+                className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+              >
+                Finish
+              </button>
+            )}
+          </div>
+        </section>
+      )}
     </main>
   );
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+

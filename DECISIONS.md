@@ -19,3 +19,13 @@
 - Added failure pagination at service/API/CLI boundaries (`limit` + `offset` + `total` + `has_more`) to keep large run diagnostics tractable.
 - Added UI filtering for alert timeline by severity and metric to reduce debugging noise in long-lived datasets.
 - Added threshold overlay math utility in analysis layer with dedicated tests to keep allowed-drop/breach calculations consistent across surfaces.
+
+## 2026-02-26
+- Reframed the UI around a guided workflow pathway (`Runs -> Board -> Diagnostics -> Compare -> Artifacts`) with per-step purpose and completion criteria to reduce onboarding ambiguity.
+- Added progressive step locking across both top workflow cards and left workspace navigation so users cannot jump ahead before prerequisite steps are completed.
+- Added guided tour mode with explicit progression controls and hard gating (`Next` disabled until current step is complete) to enforce sequential understanding.
+- Added step-level visual spotlighting in Step 1 (dataset registration first, then run execution) so users are directed to the correct action order.
+- Changed default run config path to `configs/baseline.yaml` to align first-run UX with baseline-first evaluation flow.
+- Hid `Release Decision` until baseline/candidate pinning plus comparison are complete; replaced early empty panel with a lightweight prerequisite hint state.
+- Refactored Run Identity rendering to card-based fingerprint blocks with wrapping (`break-all`) to prevent overlap and improve readability.
+- Added run-execution animation and disabled-state controls to make long-running evaluation actions visibly in progress.
