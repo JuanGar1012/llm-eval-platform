@@ -1,0 +1,25 @@
+variant:
+  name: candidate_v2
+  dataset_name: sample_benchmark
+  dataset_version: v1
+  model_name: llama3.2:3b
+  prompt_version: p2
+  prompt_template: |
+    You are an evaluation-focused assistant.
+    Follow policy and be concise.
+    Task: {prompt}
+  retrieval_enabled: true
+  llm_judge_enabled: false
+  seed: 42
+  temperature: 0.0
+gates:
+  baseline_run_id: "63cb9af9f8ed6961-v1"
+  min_metric:
+    exact_match: 0.20
+    keyword_coverage: 0.40
+    schema_valid: 0.50
+  max_drop_from_baseline:
+    exact_match: 0.05
+    keyword_coverage: 0.05
+    schema_valid: 0.02
+

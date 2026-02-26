@@ -1,0 +1,20 @@
+variant:
+  name: baseline_v1
+  dataset_name: sample_benchmark
+  dataset_version: v1
+  model_name: llama3.2:3b
+  prompt_version: p1
+  prompt_template: |
+    You are a careful assistant.
+    Task: {prompt}
+  retrieval_enabled: false
+  llm_judge_enabled: false
+  seed: 42
+  temperature: 0.0
+gates:
+  min_metric:
+    exact_match: 0.20
+    keyword_coverage: 0.40
+    schema_valid: 0.50
+  max_drop_from_baseline: {}
+
