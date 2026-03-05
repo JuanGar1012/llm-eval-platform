@@ -2,7 +2,61 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Production-style starter for evaluating prompt/model/retrieval variants with regression gates before release.
+Production-style **AI Evaluation Platform** for comparing LLM prompt/model/retrieval variants, detecting regressions, and enforcing release gates before deployment.
+
+## Recruiter Snapshot
+
+### What this project is
+Local-first evaluation framework for **LLMs** that runs entirely on your machine (Ollama + SQLite), with no paid API dependency.
+
+### Why it matters
+Most GenAI projects show only generation quality. This project demonstrates **AI reliability engineering**:
+- reproducible experiments
+- baseline vs candidate regression control
+- failure analysis and drift characterization
+- release decision framing with explicit guardrails
+
+### Roles this project targets
+- AI Engineer
+- Machine Learning Engineer
+- Generative AI Engineer
+- LLM Engineer
+- Applied AI Engineer
+
+### AI engineering signals demonstrated
+- **Experiment Evaluation / Model Benchmarking:** deterministic metric pipeline (exact match, keyword coverage, schema validity, optional local LLM judge)
+- **AI Guardrails:** min-threshold + max-drop gates, release states (`APPROVED`, `DRIFT_WARNING`, `BLOCKED`)
+- **AI Reliability:** drift alerts, volatility trends, per-tag slice degradation, worst-sample diagnostics
+- **Reproducibility:** config/prompt/dataset fingerprints and immutable experiment signatures
+- **Local AI Systems:** zero-cost local inference via Ollama, offline-friendly stack
+- **Backend engineering depth:** FastAPI + service/repository architecture, SQLite persistence, API/CLI parity
+
+### Keyword alignment (for search/discovery)
+`LLMs`, `Prompt Engineering`, `Experiment Evaluation`, `Model Benchmarking`, `AI Guardrails`, `AI Reliability`, `FastAPI`, `Python`, `Transformer Models`, `Local AI Systems`, `Retrieval-Augmented Generation (RAG)`, `AI Evaluation Frameworks`, `Agent Orchestration`
+
+## Quick System Overview
+
+| Area | What it includes |
+|---|---|
+| Evaluation Runner | Multi-variant runs across prompt/model/retrieval settings |
+| Scoring | Exact match, keyword coverage, JSON schema validity, optional local judge |
+| Regression Safety | Baseline vs candidate compare with gate thresholds and fail reasons |
+| Diagnostics | Worst samples, failure clusters, per-tag breakdown, drift timeline |
+| Observability | Duration, avg/p95 latency, token estimates, cost estimate (`$0` local) |
+| Interfaces | CLI + FastAPI + React/Tailwind dashboard |
+| Storage | SQLite for datasets, runs, item results, tags, alerts |
+| Artifacts | Markdown/JSON reports + portfolio metrics snapshot |
+
+## Fast Demo (5-7 minutes)
+
+1. Register dataset in `Runs` tab.
+2. Execute baseline run (`configs/baseline.yaml`).
+3. Execute candidate run (`configs/candidate.yaml` or custom overrides).
+4. Compare pinned runs in `Compare` tab.
+5. Inspect failures/drift in `Diagnostics`.
+6. Export artifacts in `Artifacts` tab.
+
+Outcome: you can show measurable quality deltas, regression decisions, and reproducible evidence in one workflow.
 
 ## What This Scaffold Includes
 
@@ -252,6 +306,14 @@ gates:
 ```powershell
 pytest -q
 ```
+
+## How To Present This Project (Interview-Friendly)
+
+- **Problem solved:** prevent hidden LLM quality regressions before release.
+- **Technical approach:** deterministic evaluation + baseline comparison + policy gates.
+- **Reliability layer:** drift/volatility tracking, slice-level diagnostics, failure surfacing.
+- **Production mindset:** reproducible signatures, observability metrics, API/CLI/UI parity.
+- **Cost model:** fully local and zero API cost.
 
 ## LinkedIn Project Entry (Recruiter-Optimized)
 
