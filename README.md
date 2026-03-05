@@ -1,5 +1,7 @@
 # LLM Eval Platform (Local-Only, Zero API Cost)
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Production-style starter for evaluating prompt/model/retrieval variants with regression gates before release.
 
 ## What This Scaffold Includes
@@ -250,3 +252,36 @@ gates:
 ```powershell
 pytest -q
 ```
+
+## LinkedIn Project Entry (Recruiter-Optimized)
+
+### 1) LinkedIn Project Title
+**LLM Evaluation Platform | Local AI Systems, Model Benchmarking, AI Guardrails (FastAPI + Python)**
+
+### 2) One-Line Summary
+Built a local-first, zero-API-cost LLM evaluation framework that benchmarks prompt/model/RAG variants, applies regression gates, and exports reproducible evidence for AI reliability.
+
+### 3) LinkedIn Description (3–5 bullets)
+- Designed a production-style **AI Evaluation Framework** for **LLMs** using **Python** + **FastAPI**, with CLI/API/UI parity for experiment execution, diagnostics, and report export.
+- Implemented experiment orchestration for **Prompt Engineering**, local **Transformer Models** (Ollama), retrieval-on/off evaluation (**RAG** flow), and deterministic scoring (exact match, keyword coverage, JSON schema validity).
+- Added release-safety controls with **AI Guardrails**: minimum quality thresholds, baseline-vs-candidate max-drop gates, and explicit release decisions (`APPROVED`, `DRIFT_WARNING`, `BLOCKED`).
+- Built reproducibility and reliability primitives: deterministic fingerprints/signatures, SQLite experiment tracking, trend/volatility drift analysis, failure clustering, and run-level observability (latency, p95, token estimates).
+- Delivered a local-only evaluation cockpit and artifact pipeline (Markdown/JSON snapshots) to support **Experiment Evaluation**, **Model Benchmarking**, and interview-ready evidence without paid APIs.
+
+### 4) Key Technologies
+- Python, FastAPI, Typer CLI, SQLite, SQLAlchemy
+- Ollama (local LLM runtime), JSON Schema validation, PyYAML
+- React (UMD), Tailwind CSS, structured logging
+- Local-first evaluation workflows with optional RAG-style retrieval hooks
+
+### 5) AI Engineering Signals
+- **AI Reliability:** regression gating, drift alerts, and failure-mode surfacing.
+- **Reproducibility:** deterministic run IDs, fingerprints, and experiment signatures.
+- **Evaluation Depth:** deterministic metrics plus optional local LLM judge.
+- **Infrastructure Thinking:** modular backend layers, persistent storage, API/CLI parity, report artifacts.
+- **Applied GenAI Delivery:** local AI systems design, prompt/model variant testing, and release-readiness controls.
+- **Scalable Extension Paths:** retrieval and **Vector Database** integration points, and **Agent Orchestration**-style workflow controls in the UI pipeline.
+
+### 6) GitHub Link Placement
+- Place the repository URL directly under the first two lines of the LinkedIn project entry:
+  - **GitHub:** https://github.com/JuanGar1012/llm-eval-platform
