@@ -1,131 +1,172 @@
-# LLM Eval Platform (Local-Only, Zero API Cost)
+# LLM Eval Platform
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Production-style **AI Evaluation Platform** for comparing LLM prompt/model/retrieval variants, detecting regressions, and enforcing release gates before deployment.
+## 1. Project Overview
 
-## Recruiter Snapshot
+`llm-eval-platform` is a production-style evaluation system for comparing LLM variants (prompt/model/retrieval settings), detecting quality regressions, and generating release evidence before shipping changes.
 
-### What this project is
-Local-first evaluation framework for **LLMs** that runs entirely on your machine (Ollama + SQLite), with no paid API dependency.
+It is designed for AI engineering workflows where teams need to answer:
+- Did the new prompt/model actually improve quality?
+- Did any metric regress relative to baseline?
+- Is output reliability stable across repeated runs and slices?
+- Can the results be reproduced and audited later?
 
-### Why it matters
-Most GenAI projects show only generation quality. This project demonstrates **AI reliability engineering**:
-- reproducible experiments
-- baseline vs candidate regression control
-- failure analysis and drift characterization
-- release decision framing with explicit guardrails
+This project is **Local-first and zero-cost by design**:
+- fully local runtime
+- open-source model friendly (Ollama)
+- no paid APIs
+- no cloud dependency required
 
-### Roles this project targets
-- AI Engineer
-- Machine Learning Engineer
-- Generative AI Engineer
-- LLM Engineer
-- Applied AI Engineer
+---
 
-### AI engineering signals demonstrated
-- **Experiment Evaluation / Model Benchmarking:** deterministic metric pipeline (exact match, keyword coverage, schema validity, optional local LLM judge)
-- **AI Guardrails:** min-threshold + max-drop gates, release states (`APPROVED`, `DRIFT_WARNING`, `BLOCKED`)
-- **AI Reliability:** drift alerts, volatility trends, per-tag slice degradation, worst-sample diagnostics
-- **Reproducibility:** config/prompt/dataset fingerprints and immutable experiment signatures
-- **Local AI Systems:** zero-cost local inference via Ollama, offline-friendly stack
-- **Backend engineering depth:** FastAPI + service/repository architecture, SQLite persistence, API/CLI parity
+## 2. Key Capabilities
 
-### Keyword alignment (for search/discovery)
-`LLMs`, `Prompt Engineering`, `Experiment Evaluation`, `Model Benchmarking`, `AI Guardrails`, `AI Reliability`, `FastAPI`, `Python`, `Transformer Models`, `Local AI Systems`, `Retrieval-Augmented Generation (RAG)`, `AI Evaluation Frameworks`, `Agent Orchestration`
+- **Dataset Registry (versioned JSONL)**
+  - Registers benchmark datasets with checksum and version metadata.
+  - Solves traceability problems when evaluating across changing datasets.
 
-## Quick System Overview
+- **Experiment Runner (variant-based)**
+  - Runs prompt/model/retrieval variants from YAML config.
+  - Supports runtime overrides (model, seed, temperature, baseline run ID).
+  - Solves controlled experiment execution for baseline vs candidate workflows.
 
-| Area | What it includes |
-|---|---|
-| Evaluation Runner | Multi-variant runs across prompt/model/retrieval settings |
-| Scoring | Exact match, keyword coverage, JSON schema validity, optional local judge |
-| Regression Safety | Baseline vs candidate compare with gate thresholds and fail reasons |
-| Diagnostics | Worst samples, failure clusters, per-tag breakdown, drift timeline |
-| Observability | Duration, avg/p95 latency, token estimates, cost estimate (`$0` local) |
-| Interfaces | CLI + FastAPI + React/Tailwind dashboard |
-| Storage | SQLite for datasets, runs, item results, tags, alerts |
-| Artifacts | Markdown/JSON reports + portfolio metrics snapshot |
-
-## Fast Demo (5-7 minutes)
-
-1. Register dataset in `Runs` tab.
-2. Execute baseline run (`configs/baseline.yaml`).
-3. Execute candidate run (`configs/candidate.yaml` or custom overrides).
-4. Compare pinned runs in `Compare` tab.
-5. Inspect failures/drift in `Diagnostics`.
-6. Export artifacts in `Artifacts` tab.
-
-Outcome: you can show measurable quality deltas, regression decisions, and reproducible evidence in one workflow.
-
-## What This Scaffold Includes
-
-- Python-first architecture with strong type hints and modular packages.
-- FastAPI endpoints for dataset registration, run execution, comparison, and report export.
-- End-user web UI built with React + Tailwind CSS (blue theme) at `/ui`.
-  - Workflow navigation: Board, Runs, Compare, Diagnostics, Artifacts
-  - Pin baseline/candidate runs
-  - Release decision card with blockers/checklist
-  - Metric trend sparklines across repeated runs
-  - Local model picker from Ollama (`/models/local`)
-- Typer CLI with required commands:
-  - `register-dataset`
-  - `run-eval`
-  - `compare-runs`
-  - `export-report`
-  - `db-check`
-  - `run-trends`
-  - `run-failures`
-  - `run-release-decision`
-  - `run-alerts`
-- SQLite storage for datasets, runs, item-level scores, and gate outcomes.
-- Rule-based scoring:
+- **Deterministic Scoring Pipeline**
   - exact match
   - keyword coverage
-  - structured JSON output schema validity
-- Optional local LLM-judge mode (Ollama model only).
-- Regression gates (minimum metrics + max drop from baseline).
-- Markdown + JSON reporting with per-tag breakdown and pass/fail gate status.
-- Portfolio-ready metrics snapshot JSON artifact.
+  - JSON schema validity
+  - optional local LLM judge score
+  - Solves deterministic, repeatable quality measurement without external services.
 
-## Folder Structure
+- **Regression Gates / AI Guardrails**
+  - Minimum metric thresholds.
+  - Max-drop-from-baseline thresholds.
+  - Release status framing: `APPROVED`, `DRIFT_WARNING`, `BLOCKED`.
+  - Solves release-safety decisioning instead of metric-only reporting.
+
+- **Drift & Reliability Characterization**
+  - Historical trend tracking and volatility.
+  - Drift alert generation and dataset-level alert timeline.
+  - Solves early warning for quality instability.
+
+- **Failure Surfacing**
+  - Worst-sample ranking by severity.
+  - Schema violation and keyword-miss clustering.
+  - Solves debugging depth and root-cause analysis.
+
+- **Portfolio-Ready Reporting**
+  - Markdown report
+  - JSON report
+  - metrics snapshot artifact
+  - Solves reproducible evidence packaging for reviews and hiring portfolios.
+
+---
+
+## 3. System Architecture
+
+### High-level components
+
+- **UI Layer**: React + Tailwind dashboard (`/ui`) for guided workflows.
+- **API Layer**: FastAPI endpoints for datasets, runs, compare, diagnostics, export.
+- **Service Layer**: orchestration and business logic (`service.py`).
+- **Runner Layer**: local Ollama generation + per-item scoring (`runner/experiment.py`).
+- **Scoring & Gates Layer**: deterministic metrics and policy gates.
+- **Analysis Layer**: trends, drift alerts, failure ranking, threshold overlays.
+- **Storage Layer**: SQLite schema + repository access.
+- **Reporting Layer**: report and snapshot exporters.
+
+### ASCII architecture diagram
+
+```text
+User (UI/CLI)
+   |
+   v
+FastAPI / Typer Interface
+   |
+   v
+Service Orchestration Layer
+   |
+   +--> Dataset Registry (JSONL ingestion + checksum)
+   |
+   +--> Experiment Runner
+   |      |
+   |      +--> Retrieval Context Toggle (tag-based context injection)
+   |      +--> Ollama Local Model Generation
+   |      +--> Optional Local LLM Judge
+   |
+   +--> Scoring Layer
+   |      +--> exact_match / keyword_coverage / schema_valid
+   |
+   +--> Gate Layer (min thresholds + max baseline drop)
+   |
+   +--> Analysis Layer (drift, volatility, failure clusters)
+   |
+   v
+SQLite Persistence (runs, items, tag metrics, drift alerts)
+   |
+   v
+Reporting (Markdown + JSON + metrics snapshot)
+```
+
+### Layer responsibilities
+
+- **Interface layer**: accepts run commands and API requests, returns structured outputs.
+- **Orchestration layer**: resolves config, invokes runner, triggers comparison/export.
+- **Execution layer**: runs local model inference and captures latency/tokens/errors.
+- **Evaluation layer**: computes deterministic metrics and applies release gates.
+- **Reliability layer**: tracks drift, volatility, and high-severity failures.
+- **Persistence layer**: stores all run artifacts for reproducible auditing.
+
+---
+
+## 4. Repository Structure
 
 ```text
 .
-|-- configs/
-|   |-- baseline.yaml
-|   `-- candidate.yaml
-|-- datasets/
-|   `-- sample_benchmark.jsonl
-|-- reports/
+|-- configs/                      # baseline/candidate run configurations
+|-- datasets/                     # benchmark JSONL datasets
 |-- src/llm_eval_platform/
-|   |-- api.py
-|   |-- cli.py
-|   |-- config.py
-|   |-- service.py
-|   |-- domain/models.py
-|   |-- ingestion/registry.py
-|   |-- runner/{experiment.py, ollama_client.py, retrieval.py}
-|   |-- scoring/{metrics.py, gates.py}
-|   |-- storage/{db.py, repository.py}
-|   |-- web/templates/index.html
-|   |-- web/static/app.jsx
-|   `-- reporting/exporter.py
-`-- tests/
-    |-- test_metrics.py
-    `-- test_gates.py
+|   |-- api.py                    # FastAPI routes
+|   |-- cli.py                    # Typer CLI commands
+|   |-- service.py                # orchestration/business logic
+|   |-- config.py                 # app config + deterministic fingerprints
+|   |-- domain/models.py          # typed domain contracts
+|   |-- ingestion/registry.py     # dataset loading + checksum/version record
+|   |-- runner/
+|   |   |-- experiment.py         # end-to-end run execution pipeline
+|   |   |-- ollama_client.py      # local model inference integration
+|   |   `-- retrieval.py          # retrieval context helper
+|   |-- scoring/
+|   |   |-- metrics.py            # deterministic metric computation
+|   |   `-- gates.py              # regression gate policy engine
+|   |-- analysis.py               # trends, drift, failures, overlays
+|   |-- storage/
+|   |   |-- db.py                 # SQLite schema + migrations
+|   |   `-- repository.py         # persistence/query abstraction
+|   |-- reporting/exporter.py     # markdown/json/snapshot artifacts
+|   `-- web/
+|       |-- templates/index.html  # UI shell
+|       `-- static/app.jsx        # guided React dashboard
+|-- tests/                        # metrics, gates, analysis, API tests
+|-- pyproject.toml                # packaging and dependencies
+`-- LICENSE
 ```
 
-## Prerequisites (Windows PowerShell)
+---
 
-1. Python 3.10+ installed.
-2. Ollama installed and running (`http://localhost:11434`).
-3. Local model pulled, for example:
-   ```powershell
-   ollama pull llama3.2:3b
-   ```
+## 5. Installation and Local Setup
 
-## Setup
+### Requirements
+
+- Python `>=3.10` (3.11 recommended)
+- Ollama installed and running locally (`http://localhost:11434`)
+- Local model pulled (example):
+
+```powershell
+ollama pull llama3.2:3b
+```
+
+### Setup
 
 ```powershell
 python -m venv .venv
@@ -133,217 +174,163 @@ python -m venv .venv
 pip install -e .[dev]
 ```
 
-Optional (higher-fidelity token estimation):
+Optional (higher-fidelity token estimates):
 
 ```powershell
 pip install tiktoken
 ```
 
-Token estimation strategy:
-- Default fallback: character heuristic (`chars/4`) for deterministic local operation.
-- If `tiktoken` is installed, runner will use model-aware encoding lookup and fallback to `cl100k_base`.
-- Recommended mapping guidance:
-  - Llama-family local models: fallback encoding is acceptable for relative trend tracking.
-  - OpenAI-family names (if used in configs for portability): `tiktoken.encoding_for_model` will be used when available.
-
-## CLI Workflow
-
-### 1) Register Dataset
-
-```powershell
-llm-eval register-dataset --dataset-name sample_benchmark --version v1 --path datasets\sample_benchmark.jsonl
-```
-
-Expected output example:
-
-```text
-registered dataset sample_benchmark:v1 (4 items)
-```
-
-### 2) Run Baseline
-
-```powershell
-llm-eval run-eval --config configs\baseline.yaml
-```
-
-Expected output example:
-
-```text
-completed run 2f2c2d580f1e6d3a-v1 status=completed
-{
-  "exact_match": 0.5,
-  "keyword_coverage": 0.67,
-  "schema_valid": 0.75,
-  "llm_judge_score": null,
-  "sample_count": 4
-}
-```
-
-### 3) Run Candidate (set baseline in config first)
-
-Update `configs/candidate.yaml`:
-- Set `gates.baseline_run_id` to your baseline run id.
-
-Then run:
-
-```powershell
-llm-eval run-eval --config configs\candidate.yaml
-```
-
-### 4) Compare Runs
-
-```powershell
-llm-eval compare-runs --baseline-run-id <BASELINE_RUN_ID> --candidate-run-id <CANDIDATE_RUN_ID>
-```
-
-### 5) Export Report + Portfolio Snapshot
-
-```powershell
-llm-eval export-report --run-id <CANDIDATE_RUN_ID> --baseline-run-id <BASELINE_RUN_ID> --output-dir reports
-```
-
-Artifacts:
-- `reports/<RUN_ID>.report.md`
-- `reports/<RUN_ID>.report.json`
-- `reports/<RUN_ID>.metrics_snapshot.json`
-
-### 6) Check DB Schema Version
-
-```powershell
-llm-eval db-check
-```
-
-Expected output example:
-
-```json
-{
-  "db_path": "C:\\Users\\you\\project\\llm_eval.db",
-  "schema_version": 1
-}
-```
-
-## API Workflow
-
-Start API:
+### Start API + UI
 
 ```powershell
 uvicorn llm_eval_platform.api:app --reload
 ```
 
-Open UI:
+Open:
+- UI: `http://127.0.0.1:8000/ui`
+- Health: `http://127.0.0.1:8000/health`
 
-```text
-http://127.0.0.1:8000/ui
+This setup remains fully local and does not require paid APIs or cloud services.
+
+---
+
+## 6. Example Usage
+
+### Input
+
+Example dataset row (`datasets/sample_benchmark.jsonl`):
+
+```json
+{
+  "item_id": "json_001",
+  "prompt": "Return JSON with fields status and reason for login failure due to incorrect password.",
+  "keywords": ["incorrect password"],
+  "output_schema": {
+    "type": "object",
+    "properties": {"status": {"type": "string"}, "reason": {"type": "string"}},
+    "required": ["status", "reason"]
+  },
+  "tags": {"domain": "auth", "difficulty": "easy", "format": "json"}
+}
 ```
 
-Run detail deep-link:
+### Processing flow
 
-```text
-http://127.0.0.1:8000/ui/runs/<RUN_ID>
-```
+1. Register dataset.
+2. Run baseline config.
+3. Run candidate config (optionally with retrieval enabled).
+4. Compare baseline vs candidate.
+5. Export report artifacts.
 
-Notes:
-- UI uses React (UMD) + Tailwind CDN to keep setup zero-build and local-first.
-- For production hardening later, migrate UI to a bundled React build (Vite) and keep the same API routes.
+### Output
 
-Endpoints:
-- `GET /health` (includes DB schema version)
-- `GET /ui` (local dashboard)
-- `GET /runs` (list runs)
-- `GET /models/local` (list locally available Ollama models)
-- `POST /datasets/register`
-- `POST /runs`
-- `POST /runs/from-config`
-- `GET /runs/{run_id}`
-- `GET /runs/{run_id}/results`
-- `GET /runs/{run_id}/tag-metrics`
-- `GET /runs/{run_id}/trends`
-- `GET /runs/{run_id}/failures` (`limit`, `offset` query params)
-- `GET /runs/{run_id}/release-decision`
-- `GET /runs/{run_id}/alerts`
-- `POST /compare`
-- `POST /reports/export`
+- Run-level metrics and gate decision.
+- Delta comparison vs baseline.
+- Failure diagnostics and drift alerts.
+- Files:
+  - `reports/<RUN_ID>.report.md`
+  - `reports/<RUN_ID>.report.json`
+  - `reports/<RUN_ID>.metrics_snapshot.json`
 
-## Config Files
+---
 
-- Baseline config: `configs/baseline.yaml`
-- Candidate config: `configs/candidate.yaml`
+## 7. AI Evaluation Methodology
 
-Both use this schema:
+The evaluation pipeline is deterministic-first and reproducibility-oriented.
 
-```yaml
-variant:
-  name: string
-  dataset_name: string
-  dataset_version: string
-  model_name: string
-  prompt_version: string
-  prompt_template: "Task: {prompt}"
-  retrieval_enabled: false
-  llm_judge_enabled: false
-  llm_judge_model: null
-  seed: 42
-  temperature: 0.0
-gates:
-  baseline_run_id: null
-  min_metric:
-    exact_match: 0.2
-  max_drop_from_baseline:
-    exact_match: 0.05
-```
+### Experiment design
 
-## Where To Plug In Real Data and Thresholds
+- Variant configs define:
+  - model
+  - prompt template/version
+  - retrieval toggle
+  - seed and temperature
+  - gate policies
+- Dataset version/checksum is tracked to bind results to exact data state.
 
-- Replace placeholder benchmark with your real JSONL prompts in `datasets/`.
-- Register your dataset version via `register-dataset`.
-- Set your acceptance thresholds in:
-  - `gates.min_metric`
-  - `gates.max_drop_from_baseline`
-- Add/adjust tags (`domain`, `difficulty`, `safety`, `format`) per row for richer per-tag reporting.
+### Metrics implemented
 
-## Run Tests
+- **Exact Match**: strict normalized string equality vs expected answer.
+- **Keyword Coverage**: ratio of required keywords present in output.
+- **Schema Validity**: JSON schema conformance for structured responses.
+- **Optional Local LLM Judge**: normalized score from local judge model output.
 
-```powershell
-pytest -q
-```
+### Aggregate tracking
 
-## How To Present This Project (Interview-Friendly)
+- Per-run aggregate metric means.
+- Per-tag slice metrics (`domain`, `difficulty`, `safety`, `format`).
+- Baseline-vs-candidate metric deltas.
+- Threshold overlay (`allowed_drop`, `actual_drop`, `breach`).
 
-- **Problem solved:** prevent hidden LLM quality regressions before release.
-- **Technical approach:** deterministic evaluation + baseline comparison + policy gates.
-- **Reliability layer:** drift/volatility tracking, slice-level diagnostics, failure surfacing.
-- **Production mindset:** reproducible signatures, observability metrics, API/CLI/UI parity.
-- **Cost model:** fully local and zero API cost.
+### Notes on additional metrics
 
-## LinkedIn Project Entry (Recruiter-Optimized)
+Precision/Recall/F1/Retrieval relevance are not currently first-class metrics in this scaffold.  
+The framework is designed so these can be added as future metric modules.
 
-### 1) LinkedIn Project Title
-**LLM Evaluation Platform | Local AI Systems, Model Benchmarking, AI Guardrails (FastAPI + Python)**
+---
 
-### 2) One-Line Summary
-Built a local-first, zero-API-cost LLM evaluation framework that benchmarks prompt/model/RAG variants, applies regression gates, and exports reproducible evidence for AI reliability.
+## 8. Guardrails and Safety Mechanisms
 
-### 3) LinkedIn Description (3–5 bullets)
-- Designed a production-style **AI Evaluation Framework** for **LLMs** using **Python** + **FastAPI**, with CLI/API/UI parity for experiment execution, diagnostics, and report export.
-- Implemented experiment orchestration for **Prompt Engineering**, local **Transformer Models** (Ollama), retrieval-on/off evaluation (**RAG** flow), and deterministic scoring (exact match, keyword coverage, JSON schema validity).
-- Added release-safety controls with **AI Guardrails**: minimum quality thresholds, baseline-vs-candidate max-drop gates, and explicit release decisions (`APPROVED`, `DRIFT_WARNING`, `BLOCKED`).
-- Built reproducibility and reliability primitives: deterministic fingerprints/signatures, SQLite experiment tracking, trend/volatility drift analysis, failure clustering, and run-level observability (latency, p95, token estimates).
-- Delivered a local-only evaluation cockpit and artifact pipeline (Markdown/JSON snapshots) to support **Experiment Evaluation**, **Model Benchmarking**, and interview-ready evidence without paid APIs.
+- **Regression gates**
+  - `min_metric` thresholds enforce quality floors.
+  - `max_drop_from_baseline` limits acceptable regressions.
+- **Structured output validation**
+  - JSON schema validation catches malformed structured responses.
+- **Keyword constraints**
+  - Coverage checks surface missing required concepts.
+- **Release decision policy**
+  - `APPROVED`, `DRIFT_WARNING`, `BLOCKED` based on gate + drift alerts.
+- **Deterministic signatures**
+  - Config/prompt/dataset fingerprints reduce ambiguity in debugging and audits.
 
-### 4) Key Technologies
-- Python, FastAPI, Typer CLI, SQLite, SQLAlchemy
-- Ollama (local LLM runtime), JSON Schema validation, PyYAML
-- React (UMD), Tailwind CSS, structured logging
-- Local-first evaluation workflows with optional RAG-style retrieval hooks
+Prompt-injection and adversarial input hardening are not fully implemented as a dedicated security module; this is a known extension area.
 
-### 5) AI Engineering Signals
-- **AI Reliability:** regression gating, drift alerts, and failure-mode surfacing.
-- **Reproducibility:** deterministic run IDs, fingerprints, and experiment signatures.
-- **Evaluation Depth:** deterministic metrics plus optional local LLM judge.
-- **Infrastructure Thinking:** modular backend layers, persistent storage, API/CLI parity, report artifacts.
-- **Applied GenAI Delivery:** local AI systems design, prompt/model variant testing, and release-readiness controls.
-- **Scalable Extension Paths:** retrieval and **Vector Database** integration points, and **Agent Orchestration**-style workflow controls in the UI pipeline.
+---
 
-### 6) GitHub Link Placement
-- Place the repository URL directly under the first two lines of the LinkedIn project entry:
-  - **GitHub:** https://github.com/JuanGar1012/llm-eval-platform
+## 9. Failure Modes and Limitations
+
+- **Prompt sensitivity**
+  - Small prompt wording changes can produce large output shifts.
+- **Baseline dependency risk**
+  - Candidate run may fail if referenced baseline run ID is stale or missing.
+- **Retrieval simplicity**
+  - Current retrieval helper injects tag context only; no semantic retrieval/ranking yet.
+- **Metric scope**
+  - Current metrics are deterministic but may not capture deeper semantic correctness.
+- **Volatility thresholds**
+  - Drift alert thresholds are heuristic and dataset-dependent.
+- **Local inference constraints**
+  - Latency and quality vary by local hardware and model availability.
+- **Token estimation**
+  - Falls back to heuristic (`chars/4`) when tokenizer package is unavailable.
+
+---
+
+## 10. Future Improvements
+
+- Add semantic metrics (e.g., relevance/entailment and rubric-based scoring).
+- Add retrieval quality metrics and optional vector database integration.
+- Add stronger safety policies for prompt injection and refusal compliance testing.
+- Add asynchronous run queue and parallel execution controls.
+- Add richer benchmark datasets and long-horizon regression suites.
+- Add UI e2e test harness for guided workflow/tour verification.
+- Add optional distributed execution mode while preserving local-first defaults.
+
+---
+
+## 11. Why This Project Matters for AI Engineering
+
+It demonstrates:
+- **LLM systems design**: model/prompt/retrieval variant orchestration.
+- **Experiment evaluation rigor**: deterministic metrics, run lineage, baseline deltas.
+- **AI safety/reliability thinking**: guardrails, release gates, drift/failure visibility.
+- **Backend integration depth**: FastAPI + typed domain models + repository pattern.
+- **Reproducible local AI development**: zero-cost, no-cloud workflow suitable for controlled testing.
+
+
+---
+
+## 12. License
+
+This project is licensed under the **MIT License**.  
+See [`LICENSE`](LICENSE) for details.
